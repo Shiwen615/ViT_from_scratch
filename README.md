@@ -4,7 +4,7 @@ Building a Vision Transformer (ViT) step by step with PyTorch, trained on MNIST.
 
 The whole walkthrough lives in [transformer.ipynb](transformer.ipynb). Each component is added incrementally, with a shape check after every step, so you can see how the tensor changes as the model grows.
 
-> **Note:** Performance is intentionally poor. The implementation uses plain Python `for` loops (patchify, per-head attention, per-sample processing) to keep every operation easy to understand, instead of vectorized tensor operations.
+> **Note:** `patchify` and `MyMSA` are now vectorized over the batch (`unfold` + `permute`, and batched per-head attention), which makes training much faster (~8 s/epoch on an RTX 4060 vs. ~3.8 min/epoch with the original loops). The original loop versions are kept as comments in the notebook for reference. The model itself is still tiny, so accuracy is limited.
 
 ![ViT architecture](images/vit_arch.webp)
 
@@ -15,6 +15,8 @@ The whole walkthrough lives in [transformer.ipynb](transformer.ipynb). Each comp
 - [Walkthrough](#walkthrough)
 - [Model configuration](#model-configuration)
 - [Training setup](#training-setup)
+- [Results](#results)
+- [Attention visualization](#attention-visualization)
 - [Project structure](#project-structure)
 - [Known limitations](#known-limitations)
 
@@ -24,7 +26,7 @@ The whole walkthrough lives in [transformer.ipynb](transformer.ipynb). Each comp
 - `torch`, `torchvision`
 - `numpy`
 - `tqdm`
-- `matplotlib` (only for visualizing positional embeddings)
+- `matplotlib` (positional embeddings, training curves, attention heatmaps)
 - Jupyter / VS Code with the Jupyter extension
 
 ```bash
@@ -41,7 +43,7 @@ cd ViT_from_scratch
 jupyter notebook transformer.ipynb
 ```
 
-Run the cells from top to bottom. The last cell (`main()`) downloads MNIST into `datasets/`, trains for 5 epochs, and prints the test loss and accuracy.
+Run the cells from top to bottom. The last cell (`main()`) downloads MNIST into `datasets/`, trains for 20 epochs, evaluating on the test set after every epoch and saving the best weights to `best_vit.pt`. It then plots the training curves and the attention heatmaps.
 
 ## Walkthrough
 
@@ -58,7 +60,7 @@ Run the cells from top to bottom. The last cell (`main()`) downloads MNIST into 
 
 ### 1. Patchify
 
-A batch of square images `(N, C, H, W)` is turned into `(N, n_patches², H·W·C / n_patches²)`. With 28×28 MNIST images and 7×7 patches, each image becomes 49 patches of 4×4 = 16 pixels.
+A batch of square images `(N, C, H, W)` is turned into `(N, n_patches², H·W·C / n_patches²)`. With 28×28 MNIST images and 7×7 patches, each image becomes 49 patches of 4×4 = 16 pixels. The implementation uses `unfold` on the height and width dimensions, then `permute` + `reshape`, so no Python loops are needed.
 
 ![Patchify](images/pachify.webp)
 
@@ -93,7 +95,7 @@ They are stored with `register_buffer`, so they move with the model across devic
 softmax(Q · Kᵀ / sqrt(d_head)) · V
 ```
 
-The head outputs are concatenated back to the original token dimension.
+All heads are computed for the whole batch at once (`q @ k.transpose(-2, -1)`), and the head outputs are concatenated back to the original token dimension.
 
 ### 6. Transformer block
 
@@ -131,10 +133,23 @@ model = MyViT(
 | Batch size | 128 |
 | Optimizer | Adam, lr = 0.005 |
 | Loss | `CrossEntropyLoss` |
-| Epochs | 5 |
+| Epochs | 20 |
+| Checkpoint | best test accuracy saved to `best_vit.pt` |
 | Seeds | `np.random.seed(0)`, `torch.manual_seed(0)` |
 
-After training, the notebook evaluates on the MNIST test set and reports test loss and accuracy.
+The test set is evaluated after every epoch; the weights with the highest test accuracy are saved. Note that the test set is used for checkpoint selection, so the reported best accuracy is slightly optimistic.
+
+## Results
+
+Best test accuracy: **83.16%** (epoch 18); final epoch: 81.32%. Training loss goes from 2.14 to 1.64 over 20 epochs.
+
+![Training curves](training_curves.png)
+
+## Attention visualization
+
+The last section of the notebook loads `best_vit.pt` and overlays the class token's attention on the input digits: per block (mean over heads) and as attention rollout across blocks.
+
+![Attention heatmaps](attention_heatmaps.png)
 
 ## Project structure
 
@@ -144,13 +159,16 @@ ViT_from_scratch/
 ├── images/
 │   ├── vit_arch.webp   # ViT architecture diagram
 │   └── pachify.webp    # patchify illustration
+├── training_curves.png     # loss / accuracy curves (generated)
+├── attention_heatmaps.png  # CLS attention overlays (generated)
+├── best_vit.pt             # best checkpoint (generated)
 ├── datasets/           # MNIST data (auto-downloaded, git-ignored)
 └── README.md
 ```
 
 ## Known limitations
 
-- Loops over images, patches, samples, and heads make training slow; this is for learning, not production.
+- Attention still loops over heads (batched over samples); this is for learning, not production.
 - The model is tiny (`hidden_d=8`), so accuracy is limited.
 - The classification head applies `Softmax` and the loss is `CrossEntropyLoss`, which already applies log-softmax internally. This works, but is redundant; for a cleaner setup, remove the `Softmax` from the head.
 - Only square images are supported by `patchify`.
