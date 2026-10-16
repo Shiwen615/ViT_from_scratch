@@ -10,15 +10,25 @@ The whole walkthrough lives in [transformer.ipynb](transformer.ipynb). Each comp
 
 ## Contents
 
-- [Requirements](#requirements)
-- [Quick start](#quick-start)
-- [Walkthrough](#walkthrough)
-- [Model configuration](#model-configuration)
-- [Training setup](#training-setup)
-- [Results](#results)
-- [Attention visualization](#attention-visualization)
-- [Project structure](#project-structure)
-- [Known limitations](#known-limitations)
+- [ViT from Scratch](#vit-from-scratch)
+  - [Contents](#contents)
+  - [Requirements](#requirements)
+  - [Quick start](#quick-start)
+  - [Walkthrough](#walkthrough)
+    - [1. Patchify](#1-patchify)
+    - [2. Linear mapper](#2-linear-mapper)
+    - [3. Class token](#3-class-token)
+    - [4. Positional encoding](#4-positional-encoding)
+    - [5. Multi-head self-attention](#5-multi-head-self-attention)
+    - [6. Transformer block](#6-transformer-block)
+    - [7–8. Full model and classification head](#78-full-model-and-classification-head)
+  - [Model configuration](#model-configuration)
+  - [Training setup](#training-setup)
+  - [Results](#results)
+  - [Attention visualization](#attention-visualization)
+  - [Project structure](#project-structure)
+  - [Known limitations](#known-limitations)
+  - [References](#references)
 
 ## Requirements
 
@@ -151,6 +161,8 @@ The last section of the notebook loads `best_vit.pt` and overlays the class toke
 
 ![Attention heatmaps](attention_heatmaps.png)
 
+> **Note:** Because the model is tiny (`hidden_d=8`) and trained on a small dataset (MNIST), the attention maps are not very informative.
+
 ## Project structure
 
 ```
@@ -170,6 +182,7 @@ ViT_from_scratch/
 
 - Attention still loops over heads (batched over samples); this is for learning, not production.
 - The model is tiny (`hidden_d=8`), so accuracy is limited.
+- Since the model is small and the dataset is small, the attention heatmaps do not show clear, meaningful patterns; attention does not focus well on the digits.
 - The classification head applies `Softmax` and the loss is `CrossEntropyLoss`, which already applies log-softmax internally. This works, but is redundant; for a cleaner setup, remove the `Softmax` from the head.
 - Only square images are supported by `patchify`.
 
